@@ -1,0 +1,435 @@
+package javaapplication1;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+
+public class FacturaMaster {
+    private Connection connection;
+    private DefaultTableModel tableModel;
+    private JTable table;
+    private JLabel facturaNoLabel;
+    private JTextField clienteField;
+    private JLabel fechaLabel;
+    private final JTextField productoField;
+    private JTextField descripcionField;
+    private final JTextField uniMedField;
+    private JTextField cantidadField;
+    private JLabel valUniLabel;
+    private JComboBox<String> ivaComboBox;
+    private JLabel sumaLabel;
+    private JLabel ivaLabel;
+    private JLabel totalLabel;
+    private JComboBox<String> metodoPagoComboBox;
+    private static int facturaCounter = 1;
+
+    // Clase interna para la conexión a Oracle
+    private static class ConexionOracle {
+        private static final String URL = "jdbc:oracle:thin:@localhost:1521:xe";
+        private static final String USER = "System"; // Reemplaza con tu nombre de usuario
+        private static final String PASSWORD = "123456"; // Reemplaza con tu contraseña
+
+        public static Connection getConnection() {
+            Connection con = null;
+            try {
+                // Registrar el driver JDBC de Oracle
+                DriverManager.registerDriver(new oracle.jdbc.driver.OracleDriver());
+                con = DriverManager.getConnection(URL, USER, PASSWORD);
+                System.out.println("Conexión exitosa");
+            } catch (SQLException e) {
+                System.out.println("Error al conectarse a la BD " + e);
+            }
+            return con;
+        }
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> {
+            new FacturaMaster();
+        });
+    }
+
+    public FacturaMaster() {
+        System.out.println("Iniciando FacturaMaster...");
+        connection = ConexionOracle.getConnection();
+        try {
+            if (connection != null) {
+                connection.setAutoCommit(false);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        JFrame frame = new JFrame("Factura - Productos (INTERFAZ CRUD)");
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(new Color(255, 228, 196)); // Color crema
+
+        // Información de la factura
+        JPanel infoPanel = new JPanel();
+        infoPanel.setLayout(new GridLayout(3, 2, 10, 10));
+        infoPanel.setBackground(new Color(255, 228, 196));
+        infoPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        facturaNoLabel = new JLabel("Factura No.: FAC-001");
+        clienteField = new JTextField(20);
+        fechaLabel = new JLabel("Fecha: " + new SimpleDateFormat("yyyy-MM-dd").format(new Date()));
+
+        infoPanel.add(new JLabel("Factura No.:"));
+        infoPanel.add(facturaNoLabel);
+        infoPanel.add(new JLabel("Cliente:"));
+        infoPanel.add(clienteField);
+        infoPanel.add(new JLabel("Fecha:"));
+        infoPanel.add(fechaLabel);
+
+        panel.add(infoPanel, BorderLayout.NORTH);
+
+        // Panel principal para tabla y campos de ingreso
+        JPanel mainPanel = new JPanel(new BorderLayout());
+
+        // Tabla
+        String[] columnNames = {"Productos", "Descripción", "Uni Med", "Cantidad", "Val Uni", "Subtotal"};
+        tableModel = new DefaultTableModel(columnNames, 0);
+        table = new JTable(tableModel);
+        JScrollPane scrollPane = new JScrollPane(table);
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Panel para ingreso de datos
+        JPanel inputPanel = new JPanel();
+        inputPanel.setLayout(new BoxLayout(inputPanel, BoxLayout.Y_AXIS));
+        inputPanel.setBackground(new Color(255, 228, 196));
+        inputPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // Panel de campos de texto
+        JPanel fieldsPanel = new JPanel(new GridLayout(5, 2, 5, 5));
+        fieldsPanel.setBackground(new Color(255, 228, 196));
+
+        productoField = new JTextField(10);
+        descripcionField = new JTextField(10);
+        descripcionField.setEditable(false);
+        uniMedField = new JTextField(10);
+        uniMedField.setEditable(false);
+        cantidadField = new JTextField(10);
+        valUniLabel = new JLabel("0.0");
+
+        fieldsPanel.add(new JLabel("Producto:"));
+        fieldsPanel.add(productoField);
+        fieldsPanel.add(new JLabel("Descripción:"));
+        fieldsPanel.add(descripcionField);
+        fieldsPanel.add(new JLabel("Uni Med:"));
+        fieldsPanel.add(uniMedField);
+        fieldsPanel.add(new JLabel("Cantidad:"));
+        fieldsPanel.add(cantidadField);
+        fieldsPanel.add(new JLabel("Val Uni:"));
+        fieldsPanel.add(valUniLabel);
+
+        inputPanel.add(fieldsPanel);
+
+        // Panel de selección de IVA
+        JPanel ivaPanel = new JPanel(new GridLayout(1, 2, 5, 5));
+        ivaPanel.setBackground(new Color(255, 228, 196));
+
+        ivaComboBox = new JComboBox<>(new String[]{"0%", "12%", "15%", "18%"});
+        ivaPanel.add(new JLabel("IVA:"));
+        ivaPanel.add(ivaComboBox);
+
+        inputPanel.add(ivaPanel);
+
+        // Panel de selección de método de pago
+        JPanel metodoPagoPanel = new JPanel(new GridLayout(1, 2, 5, 5));
+        metodoPagoPanel.setBackground(new Color(255, 228, 196));
+
+        metodoPagoComboBox = new JComboBox<>(new String[]{"EFECT", "TARCR", "TARDB", "TRANS", "CHEQ"});
+        metodoPagoPanel.add(new JLabel("Método de Pago:"));
+        metodoPagoPanel.add(metodoPagoComboBox);
+
+        inputPanel.add(metodoPagoPanel);
+
+        // Panel de botones orientados a la derecha
+        JPanel buttonsPanel = new JPanel(new GridLayout(7, 1, 10, 10)); // Cambiado de 6 a 7
+        buttonsPanel.setBackground(new Color(255, 228, 196));
+
+        // Botones
+        JButton searchButton = new JButton("Buscar Producto");
+        JButton addButton = new JButton("Añadir Producto");
+        JButton updateButton = new JButton("Actualizar Producto");
+        JButton deleteButton = new JButton("Eliminar Producto");
+        JButton readButton = new JButton("Leer Factura");
+        JButton generateButton = new JButton("Generar Factura");
+        JButton verFacturasButton = new JButton("Ver Facturas");
+
+        // Configuración de colores para los botones
+        searchButton.setBackground(new Color(173, 216, 230)); // Color celeste claro
+        addButton.setBackground(new Color(144, 238, 144)); // Color verde claro
+        updateButton.setBackground(new Color(255, 255, 102)); // Color amarillo claro
+        deleteButton.setBackground(new Color(255, 182, 193)); // Color rosa claro
+        readButton.setBackground(new Color(255, 165, 0)); // Color naranja claro
+        generateButton.setBackground(new Color(135, 206, 250)); // Color azul claro
+        verFacturasButton.setBackground(new Color(221, 160, 221)); // Color púrpura claro
+
+        // Acción de búsqueda de producto
+        searchButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                buscarProducto();
+            }
+        });
+
+        // Acción para añadir producto
+        addButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                añadirProducto();
+            }
+        });
+
+        // Acción para actualizar producto
+        updateButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                actualizarProducto();
+            }
+        });
+
+        // Acción para eliminar producto
+        deleteButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                eliminarProducto();
+            }
+        });
+
+        // Acción para leer factura
+        readButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                leerFactura();
+            }
+        });
+
+        // Acción para generar factura
+        generateButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                generarFactura();
+            }
+        });
+
+        // Acción para ver facturas
+        verFacturasButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                verFacturas();
+            }
+        });
+
+        // Añadir botones al panel de botones
+        buttonsPanel.add(searchButton);
+        buttonsPanel.add(addButton);
+        buttonsPanel.add(updateButton);
+        buttonsPanel.add(deleteButton);
+        buttonsPanel.add(readButton);
+        buttonsPanel.add(generateButton);
+        buttonsPanel.add(verFacturasButton);
+
+        // Añadir el panel de botones al panel de entrada
+        inputPanel.add(buttonsPanel);
+
+        mainPanel.add(inputPanel, BorderLayout.SOUTH);
+        panel.add(mainPanel, BorderLayout.CENTER);
+
+        // Panel de totales
+        JPanel totalPanel = new JPanel();
+        totalPanel.setLayout(new GridLayout(3, 2, 10, 10));
+        totalPanel.setBackground(new Color(255, 228, 196));
+        totalPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        sumaLabel = new JLabel("Suma: 0.0");
+        ivaLabel = new JLabel("IVA: 0.0");
+        totalLabel = new JLabel("Total: 0.0");
+
+        totalPanel.add(new JLabel("Suma:"));
+        totalPanel.add(sumaLabel);
+        totalPanel.add(new JLabel("IVA:"));
+        totalPanel.add(ivaLabel);
+        totalPanel.add(new JLabel("Total:"));
+        totalPanel.add(totalLabel);
+
+        panel.add(totalPanel, BorderLayout.SOUTH);
+
+        frame.setContentPane(panel);
+        frame.pack();
+        frame.setVisible(true);
+    }
+
+
+    private void buscarProducto() {
+        String codigoProducto = productoField.getText();
+        if (codigoProducto.isEmpty()) {
+            JOptionPane.showMessageDialog(null, "Ingrese un código de producto");
+            return;
+        }
+
+        // Ajustar la consulta SQL con los nombres de tabla y campo correctos
+        String query = "SELECT PRONOMBRE, PRODESCRIPCION, PROPRECIOUM, PROUNIDADMEDIDA FROM PRODUCTOS WHERE PROCODIGO = ?";
+
+        try (PreparedStatement statement = connection.prepareStatement(query)) {
+            statement.setString(1, codigoProducto);
+            ResultSet resultSet = statement.executeQuery();
+
+            if (resultSet.next()) {
+                String nombre = resultSet.getString("PRONOMBRE");
+                String descripcion = resultSet.getString("PRODESCRIPCION");
+                double precioUM = resultSet.getDouble("PROPRECIOUM");
+                String unidadMedida = resultSet.getString("PROUNIDADMEDIDA");
+
+                // Asignar los valores obtenidos a los campos correspondientes
+                descripcionField.setText(nombre);
+                this.valUniLabel.setText(String.valueOf(precioUM));
+                uniMedField.setText(unidadMedida);
+            } else {
+                JOptionPane.showMessageDialog(null, "Producto no encontrado");
+            }
+        } catch (SQLException e) {
+            JOptionPane.showMessageDialog(null, "Error al buscar el producto: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+
+    private void añadirProducto() {
+        String codigoProducto = productoField.getText();
+        String descripcion = descripcionField.getText();
+        String uniMed = uniMedField.getText();
+        int cantidad;
+        double valorUni;
+
+        try {
+            cantidad = Integer.parseInt(cantidadField.getText());
+            valorUni = Double.parseDouble(valUniLabel.getText());
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(null, "Cantidad y Valor Unitario deben ser números");
+            return;
+        }
+
+        if (codigoProducto.isEmpty() || descripcion.isEmpty() || uniMed.isEmpty() || cantidad <= 0) {
+            JOptionPane.showMessageDialog(null, "Todos los campos deben estar llenos y la cantidad debe ser mayor que cero");
+            return;
+        }
+
+        double subtotal = valorUni * cantidad;
+        tableModel.addRow(new Object[]{codigoProducto, descripcion, uniMed, cantidad, valorUni, subtotal});
+        actualizarTotales();
+    }
+
+    private void actualizarProducto() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(null, "Seleccione un producto para actualizar");
+            return;
+        }
+
+        String codigoProducto = productoField.getText();
+        String descripcion = descripcionField.getText();
+        String uniMed = uniMedField.getText();
+        int cantidad;
+        double valorUni;
+
+        try {
+            cantidad = Integer.parseInt(cantidadField.getText());
+            valorUni = Double.parseDouble(valUniLabel.getText());
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(null, "Cantidad y Valor Unitario deben ser números");
+            return;
+        }
+
+        if (codigoProducto.isEmpty() || descripcion.isEmpty() || uniMed.isEmpty() || cantidad <= 0) {
+            JOptionPane.showMessageDialog(null, "Todos los campos deben estar llenos y la cantidad debe ser mayor que cero");
+            return;
+        }
+
+        double subtotal = valorUni * cantidad;
+        tableModel.setValueAt(codigoProducto, selectedRow, 0);
+        tableModel.setValueAt(descripcion, selectedRow, 1);
+        tableModel.setValueAt(uniMed, selectedRow, 2);
+        tableModel.setValueAt(cantidad, selectedRow, 3);
+        tableModel.setValueAt(valorUni, selectedRow, 4);
+        tableModel.setValueAt(subtotal, selectedRow, 5);
+        actualizarTotales();
+    }
+
+    private void eliminarProducto() {
+        int selectedRow = table.getSelectedRow();
+        if (selectedRow == -1) {
+            JOptionPane.showMessageDialog(null, "Seleccione un producto para eliminar");
+            return;
+        }
+
+        tableModel.removeRow(selectedRow);
+        actualizarTotales();
+    }
+
+    private void leerFactura() {
+        // Lógica para leer una factura desde la base de datos
+    }
+
+    private void generarFactura() {
+        // Lógica para generar la factura final y guardarla en la base de datos
+        // Una vez generada la factura, incrementamos el contador
+        facturaCounter++;
+        facturaNoLabel.setText("Factura No.: FAC-" + String.format("%03d", facturaCounter));
+        limpiarCampos();
+    }
+
+    private void verFacturas() {
+        // Integrar la funcionalidad de VerFacturas
+        new VerFacturas(connection).setVisible(true);
+    }
+
+    private void actualizarTotales() {
+        double suma = 0.0;
+        for (int i = 0; i < tableModel.getRowCount(); i++) {
+            suma += (double) tableModel.getValueAt(i, 5);
+        }
+
+        double iva = suma * obtenerIvaSeleccionado();
+        double total = suma + iva;
+
+        sumaLabel.setText(String.format("Suma: %.2f", suma));
+        ivaLabel.setText(String.format("IVA: %.2f", iva));
+        totalLabel.setText(String.format("Total: %.2f", total));
+    }
+
+    private double obtenerIvaSeleccionado() {
+        String ivaSeleccionado = (String) ivaComboBox.getSelectedItem();
+        switch (ivaSeleccionado) {
+            case "12%":
+                return 0.12;
+            case "15%":
+                return 0.15;
+            case "18%":
+                return 0.18;
+            default:
+                return 0.0;
+        }
+    }
+
+    private void limpiarCampos() {
+        clienteField.setText("");
+        productoField.setText("");
+        descripcionField.setText("");
+        uniMedField.setText("");
+        cantidadField.setText("");
+        valUniLabel.setText("0.0");
+        tableModel.setRowCount(0);
+        actualizarTotales();
+    }
+}
+
